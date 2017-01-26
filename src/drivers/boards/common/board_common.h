@@ -325,7 +325,6 @@ __EXPORT int board_set_bootload_mode(board_reset_e mode);
  *   BOARD_OVERRIDE_UUID as an array of bytes that is PX4_CPU_UUID_BYTE_LENGTH
  *
  ************************************************************************************/
-
 __EXPORT void board_get_uuid(uuid_byte_t uuid_bytes);
 
 /************************************************************************************
