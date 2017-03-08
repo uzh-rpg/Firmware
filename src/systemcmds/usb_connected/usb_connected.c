@@ -52,5 +52,5 @@ __EXPORT int usb_connected_main(int argc, char *argv[]);
 int
 usb_connected_main(int argc, char *argv[])
 {
-	return px4_arch_gpioread(GPIO_OTGFS_VBUS) ? 0 : 1;
+	return board_read_VBUS_state();
 }
