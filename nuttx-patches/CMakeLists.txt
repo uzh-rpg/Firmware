@@ -36,27 +36,12 @@ set(nuttx_patches
 	00002-REJECTED-fix-shadow-wanings.patch
 	00003-REJECTED-add-var-expansion-in-nsh-parse.patch
 	00004-REJECTED-avoid-export-copy-with-export-insitu.patch
-	00005-REJECTED-support-c++11.patch
 	00006-REJECTED-cstdint-fix.patch
 	00007-REJECTED-silence-jobserver-warnings.patch
 	00008-REJECTED-static-assert-fix.patch
 	00009-REJECTED-ctype-fix-shadow-wanings.patch
-	00010-BACKPORT-stm32-flash-F4-dcache-corruption-fix-no-HSI-on.patch
-	00011-BACKPORT-priority-restoration-fix.patch
-	00012-BACKPORT-stack-coloration-overreach-fix.patch
-	00013-BACKPORT-stm32-serial-dma-hotfix.patch
-	00014-BACKPORT-i2c-hotfix.patch
-	00015-BACKPORT-stm32f7-DTCM.patch
-	00016-BACKPORT-fix-CRTSCTS-defines.patch
-	00017-BACKPORT-cdcacm.patch
-	00018-BACKPORT-stm32-serial-break.patch
-	00019-BACKPORT-stm32-rcc-keep-HSI-on.patch
-	00020-BACKPORT-ramtron-CONFIG-prefix.patch
-	00021-BACKPORT-stm32f3x-add-BKP.patch
-	00022-BACKPORT-stm32-bkp-reference-fix.patch
-	00023-BACKPORT-stm32f7-bkp-reference-fix.patch
-	00024-BACKPORT-stm32f7-serial-dma-hotfix.patch
-	00025-BACKPORT-add-set-ex-to-nsh.patch
+	00010-REJECTED-no-irq-args.patch
+	00011-REJECTED-stm32_serial_no_irq_args.patch
 	90000-PENDING-wip-inflight-to-upstream.patch
 	)
 
