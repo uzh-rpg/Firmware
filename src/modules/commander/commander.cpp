@@ -2171,20 +2171,10 @@ int commander_thread_main(int argc, char *argv[])
 		bool local_eph_good;
 
 		if (status_flags.condition_local_position_valid) {
-			if (local_position.eph > eph_threshold * 2.5f) {
-				local_eph_good = false;
-
-			} else {
-				local_eph_good = true;
-			}
+			local_eph_good = (local_position.eph <= eph_threshold * 2.5f);
 
 		} else {
-			if (local_position.eph < eph_threshold) {
-				local_eph_good = true;
-
-			} else {
-				local_eph_good = false;
-			}
+			local_eph_good = (local_position.eph < eph_threshold);
 		}
 
 		check_valid(local_position.timestamp, POSITION_TIMEOUT, local_position.xy_valid
