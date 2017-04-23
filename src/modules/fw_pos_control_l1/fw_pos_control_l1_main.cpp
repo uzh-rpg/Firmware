@@ -143,6 +143,11 @@ public:
 
 private:
 	orb_advert_t	_mavlink_log_pub{nullptr};
+	orb_advert_t	_attitude_sp_pub{nullptr};		///< attitude setpoint */
+	orb_advert_t	_tecs_status_pub{nullptr};		///< TECS status publication */
+	orb_advert_t	_fw_pos_ctrl_status_pub{nullptr};	///< navigation capabilities publication */
+
+	orb_id_t _attitude_setpoint_id{nullptr};
 
 	bool		_task_should_exit{false};		///< if true, sensor task should exit */
 	bool		_task_running{false};			///< if true, task is running in its mainloop */
@@ -157,22 +162,16 @@ private:
 	int		_params_sub{-1};			///< notification of parameter updates */
 	int		_manual_control_sub{-1};		///< notification of manual control updates */
 
-	orb_advert_t	_attitude_sp_pub{nullptr};		///< attitude setpoint */
-	orb_advert_t	_tecs_status_pub{nullptr};		///< TECS status publication */
-	orb_advert_t	_fw_pos_ctrl_status_pub{nullptr};	///< navigation capabilities publication */
-
-	orb_id_t _attitude_setpoint_id{nullptr};
-
-	struct control_state_s			_ctrl_state {};			///< control state */
-	struct fw_pos_ctrl_status_s		_fw_pos_ctrl_status {};		///< navigation capabilities */
-	struct manual_control_setpoint_s	_manual {};			///< r/c channel data */
-	struct position_setpoint_triplet_s	_pos_sp_triplet {};		///< triplet of mission items */
-	struct vehicle_attitude_setpoint_s	_att_sp {};			///< vehicle attitude setpoint */
-	struct vehicle_command_s		_vehicle_command {};		///< vehicle commands */
-	struct vehicle_control_mode_s		_control_mode {};		///< control mode */
-	struct vehicle_global_position_s	_global_pos {};			///< global vehicle position */
-	struct vehicle_land_detected_s		_vehicle_land_detected {};	///< vehicle land detected */
-	struct vehicle_status_s			_vehicle_status {};		///< vehicle status */
+	control_state_s			_ctrl_state {};			///< control state */
+	fw_pos_ctrl_status_s		_fw_pos_ctrl_status {};		///< navigation capabilities */
+	manual_control_setpoint_s	_manual {};			///< r/c channel data */
+	position_setpoint_triplet_s	_pos_sp_triplet {};		///< triplet of mission items */
+	vehicle_attitude_setpoint_s	_att_sp {};			///< vehicle attitude setpoint */
+	vehicle_command_s		_vehicle_command {};		///< vehicle commands */
+	vehicle_control_mode_s		_control_mode {};		///< control mode */
+	vehicle_global_position_s	_global_pos {};			///< global vehicle position */
+	vehicle_land_detected_s		_vehicle_land_detected {};	///< vehicle land detected */
+	vehicle_status_s			_vehicle_status {};		///< vehicle status */
 
 	perf_counter_t	_loop_perf;				///< loop performance counter */
 
@@ -184,8 +183,8 @@ private:
 	float	_althold_epv{0.0f};				///< the position estimate accuracy when engaging alt hold */
 	bool	_was_in_deadband{false};			///< wether the last stick input was in althold deadband */
 
-	struct position_setpoint_s _hdg_hold_prev_wp {};	///< position where heading hold started */
-	struct position_setpoint_s _hdg_hold_curr_wp {};	///< position to which heading hold flies */
+	position_setpoint_s _hdg_hold_prev_wp {};	///< position where heading hold started */
+	position_setpoint_s _hdg_hold_curr_wp {};	///< position to which heading hold flies */
 
 	hrt_abstime _control_position_last_called{0};		///< last call of control_position  */
 
@@ -398,13 +397,14 @@ private:
 	 * @param waypoint_prev the waypoint at the current position
 	 * @param waypoint_next the waypoint in the heading direction
 	 */
-	void		get_waypoint_heading_distance(float heading, struct position_setpoint_s &waypoint_prev,
-			struct position_setpoint_s &waypoint_next, bool flag_init);
+	void		get_waypoint_heading_distance(float heading, position_setpoint_s &waypoint_prev,
+			position_setpoint_s &waypoint_next,
+			bool flag_init);
 
 	/**
 	 * Return the terrain estimate during takeoff or takeoff_alt if terrain estimate is not available
 	 */
-	float		get_terrain_altitude_takeoff(float takeoff_alt, const struct vehicle_global_position_s &global_pos);
+	float		get_terrain_altitude_takeoff(float takeoff_alt, const vehicle_global_position_s &global_pos);
 
 	/**
 	 * Check if we are in a takeoff situation
@@ -429,10 +429,8 @@ private:
 	/**
 	 * Control position.
 	 */
-	bool		control_position(const math::Vector<2> &curr_pos,
-					 const math::Vector<2> &ground_speed,
-					 const struct position_setpoint_s &pos_sp_prev,
-					 const struct position_setpoint_s &pos_sp_curr);
+	bool		control_position(const math::Vector<2> &curr_pos, const math::Vector<2> &ground_speed,
+					 const position_setpoint_s &pos_sp_prev, const position_setpoint_s &pos_sp_curr);
 
 	float		get_tecs_pitch();
 	float		get_tecs_thrust();
@@ -440,7 +438,7 @@ private:
 	float		get_demanded_airspeed();
 	float		calculate_target_airspeed(float airspeed_demand);
 	void		calculate_gndspeed_undershoot(const math::Vector<2> &curr_pos, const math::Vector<2> &ground_speed,
-			const struct position_setpoint_s &pos_sp_prev, const struct position_setpoint_s &pos_sp_curr);
+			const position_setpoint_s &pos_sp_prev, const position_setpoint_s &pos_sp_curr);
 
 	/**
 	 * Handle incoming vehicle commands
@@ -878,7 +876,7 @@ FixedwingPositionControl::calculate_target_airspeed(float airspeed_demand)
 void
 FixedwingPositionControl::calculate_gndspeed_undershoot(const math::Vector<2> &curr_pos,
 		const math::Vector<2> &ground_speed,
-		const struct position_setpoint_s &pos_sp_prev, const struct position_setpoint_s &pos_sp_curr)
+		const position_setpoint_s &pos_sp_prev, const position_setpoint_s &pos_sp_curr)
 {
 
 	if (pos_sp_curr.valid && !_l1_control.circle_mode()) {
@@ -933,8 +931,8 @@ FixedwingPositionControl::fw_pos_ctrl_status_publish()
 }
 
 void
-FixedwingPositionControl::get_waypoint_heading_distance(float heading, struct position_setpoint_s &waypoint_prev,
-		struct position_setpoint_s &waypoint_next, bool flag_init)
+FixedwingPositionControl::get_waypoint_heading_distance(float heading, position_setpoint_s &waypoint_prev,
+		position_setpoint_s &waypoint_next, bool flag_init)
 {
 	waypoint_prev.valid = true;
 	waypoint_prev.alt = _hold_alt;
@@ -975,8 +973,7 @@ FixedwingPositionControl::get_waypoint_heading_distance(float heading, struct po
 }
 
 float
-FixedwingPositionControl::get_terrain_altitude_takeoff(float takeoff_alt,
-		const struct vehicle_global_position_s &global_pos)
+FixedwingPositionControl::get_terrain_altitude_takeoff(float takeoff_alt, const vehicle_global_position_s &global_pos)
 {
 	if (PX4_ISFINITE(global_pos.terrain_alt) && global_pos.terrain_alt_valid) {
 		return global_pos.terrain_alt;
@@ -1082,7 +1079,7 @@ FixedwingPositionControl::do_takeoff_help(float *hold_altitude, float *pitch_lim
 
 bool
 FixedwingPositionControl::control_position(const math::Vector<2> &curr_pos, const math::Vector<2> &ground_speed,
-		const struct position_setpoint_s &pos_sp_prev, const struct position_setpoint_s &pos_sp_curr)
+		const position_setpoint_s &pos_sp_prev, const position_setpoint_s &pos_sp_curr)
 {
 	float dt = 0.01f;
 
@@ -2043,7 +2040,7 @@ FixedwingPositionControl::task_main()
 		/* only update parameters if they changed */
 		if (fds[0].revents & POLLIN) {
 			/* read from param to clear updated flag */
-			struct parameter_update_s update {};
+			parameter_update_s update {};
 			orb_copy(ORB_ID(parameter_update), _params_sub, &update);
 
 			/* update parameters from storage */
@@ -2294,10 +2291,10 @@ FixedwingPositionControl::tecs_update_pitch_throttle(float alt_sp, float airspee
 				    throttle_min, throttle_max, throttle_cruise,
 				    pitch_min_rad, pitch_max_rad);
 
-	struct TECS::tecs_state s {};
+	TECS::tecs_state s {};
 	_tecs.get_tecs_state(s);
 
-	struct tecs_status_s t {};
+	tecs_status_s t {};
 	t.timestamp = s.timestamp;
 
 	switch (s.mode) {
