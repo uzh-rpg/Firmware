@@ -67,8 +67,6 @@ script:
       PX4_DOCKER_REPO=px4io/px4-dev-clang:2017-04-22 ./Tools/docker_run.sh 'make clang-tidy-quiet';
     elif [[ "${BUILD_TARGET}" = "scan-build" ]]; then
       PX4_DOCKER_REPO=px4io/px4-dev-clang:2017-04-22 ./Tools/docker_run.sh 'make scan-build';
-    elif [ "${BUILD_TARGET}" = "tests_osx" ]; then
-      make tests;
     fi
 
 after_success:
