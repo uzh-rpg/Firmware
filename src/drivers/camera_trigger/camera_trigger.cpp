@@ -57,10 +57,12 @@
 
 #include <uORB/uORB.h>
 #include <uORB/topics/camera_trigger.h>
+#include <uORB/topics/camera_capture.h>
 #include <uORB/topics/sensor_combined.h>
 #include <uORB/topics/vehicle_command.h>
 #include <uORB/topics/vehicle_command_ack.h>
 #include <uORB/topics/vehicle_local_position.h>
+#include <uORB/topics/vehicle_global_position.h>
 
 #include <drivers/drv_hrt.h>
 
@@ -73,13 +75,19 @@
 
 extern "C" __EXPORT int camera_trigger_main(int argc, char *argv[]);
 
-typedef enum : int32_t {
+typedef enum : uint8_t {
 	CAMERA_INTERFACE_MODE_NONE = 0,
 	CAMERA_INTERFACE_MODE_GPIO,
 	CAMERA_INTERFACE_MODE_SEAGULL_MAP2_PWM,
 	CAMERA_INTERFACE_MODE_MAVLINK,
 	CAMERA_INTERFACE_MODE_GENERIC_PWM
 } camera_interface_mode_t;
+
+// XXX this will be relocated when we have implemented camera feedback properly
+typedef enum : uint8_t {
+	CAMERA_FEEDBACK_MODE_NONE = 0,
+	CAMERA_FEEDBACK_MODE_PWM
+} camera_feedback_mode_t;
 
 class CameraTrigger
 {
@@ -155,10 +163,13 @@ private:
 	math::Vector<2>		_last_shoot_position;
 	bool			_valid_position;
 
-	int			_vcommand_sub;
-	int			_vlposition_sub;
+	int			_command_sub;
+	int			_lpos_sub;
+	int			_gpos_sub;
+	int			_att_sub;
 
 	orb_advert_t		_trigger_pub;
+	orb_advert_t		_capture_pub;
 	orb_advert_t		_cmd_ack_pub;
 
 	param_t			_p_mode;
@@ -166,9 +177,12 @@ private:
 	param_t			_p_interval;
 	param_t			_p_distance;
 	param_t			_p_interface;
+	param_t			_p_feedback;
 
 	camera_interface_mode_t	_camera_interface_mode;
 	CameraInterface		*_camera_interface;  ///< instance of camera interface
+
+	camera_feedback_mode_t _camera_feedback_mode;
 
 	/**
 	 * Vehicle command handler
@@ -225,14 +239,18 @@ CameraTrigger::CameraTrigger() :
 	_test_shot(false),
 	_last_shoot_position(0.0f, 0.0f),
 	_valid_position(false),
-	_vcommand_sub(-1),
-	_vlposition_sub(-1),
+	_command_sub(-1),
+	_lpos_sub(-1),
+	_gpos_sub(-1),
+	_att_sub(-1),
 	_trigger_pub(nullptr),
+	_capture_pub(nullptr),
 	_cmd_ack_pub(nullptr),
 	_camera_interface_mode(CAMERA_INTERFACE_MODE_GPIO),
-	_camera_interface(nullptr)
+	_camera_interface(nullptr),
+	_camera_feedback_mode(CAMERA_FEEDBACK_MODE_NONE)
 {
-	//Initiate Camera interface basedon camera_interface_mode
+	// Initiate camera interface based on camera_interface_mode
 	if (_camera_interface != nullptr) {
 		delete (_camera_interface);
 		// set to zero to ensure parser is not used while not instantiated
@@ -247,12 +265,14 @@ CameraTrigger::CameraTrigger() :
 	_p_activation_time = param_find("TRIG_ACT_TIME");
 	_p_mode = param_find("TRIG_MODE");
 	_p_interface = param_find("TRIG_INTERFACE");
+	_p_feedback = param_find("CAM_FEEDBACK");
 
 	param_get(_p_activation_time, &_activation_time);
 	param_get(_p_interval, &_interval);
 	param_get(_p_distance, &_distance);
 	param_get(_p_mode, &_mode);
 	param_get(_p_interface, &_camera_interface_mode);
+	param_get(_p_feedback, &_camera_feedback_mode);
 
 	switch (_camera_interface_mode) {
 #ifdef __PX4_NUTTX
@@ -425,12 +445,12 @@ CameraTrigger::cycle_trampoline(void *arg)
 
 	CameraTrigger *trig = reinterpret_cast<CameraTrigger *>(arg);
 
-	if (trig->_vcommand_sub < 0) {
-		trig->_vcommand_sub = orb_subscribe(ORB_ID(vehicle_command));
+	if (trig->_command_sub < 0) {
+		trig->_command_sub = orb_subscribe(ORB_ID(vehicle_command));
 	}
 
 	bool updated = false;
-	orb_check(trig->_vcommand_sub, &updated);
+	orb_check(trig->_command_sub, &updated);
 
 	struct vehicle_command_s cmd = {};
 	unsigned cmd_result = vehicle_command_s::VEHICLE_CMD_RESULT_TEMPORARILY_REJECTED;
@@ -449,7 +469,7 @@ CameraTrigger::cycle_trampoline(void *arg)
 	// check for command update
 	if (updated) {
 
-		orb_copy(ORB_ID(vehicle_command), trig->_vcommand_sub, &cmd);
+		orb_copy(ORB_ID(vehicle_command), trig->_command_sub, &cmd);
 
 		// We always check for this command as it is used by the GCS to fire test shots
 		if (cmd.command == vehicle_command_s::VEHICLE_CMD_DO_DIGICAM_CONTROL) {
@@ -532,13 +552,13 @@ CameraTrigger::cycle_trampoline(void *arg)
 	} else if (trig->_mode == 3 || trig->_mode == 4) { // 3,4 - Distance controlled modes
 
 		// Set trigger based on covered distance
-		if (trig->_vlposition_sub < 0) {
-			trig->_vlposition_sub = orb_subscribe(ORB_ID(vehicle_local_position));
+		if (trig->_lpos_sub < 0) {
+			trig->_lpos_sub = orb_subscribe(ORB_ID(vehicle_local_position));
 		}
 
 		struct vehicle_local_position_s pos = {};
 
-		orb_copy(ORB_ID(vehicle_local_position), trig->_vlposition_sub, &pos);
+		orb_copy(ORB_ID(vehicle_local_position), trig->_lpos_sub, &pos);
 
 		if (pos.xy_valid) {
 
@@ -633,23 +653,79 @@ CameraTrigger::engage(void *arg)
 
 	CameraTrigger *trig = reinterpret_cast<CameraTrigger *>(arg);
 
-	struct camera_trigger_s	report = {};
+
+	// Send camera trigger message. This messages indicates that we sent
+	// the camera trigger request. Does not guarantee capture.
+
+	struct camera_trigger_s	trigger = {};
 
 	// Set timestamp the instant before the trigger goes off
-	report.timestamp = hrt_absolute_time();
+	trigger.timestamp = hrt_absolute_time();
 
 	trig->_camera_interface->trigger(true);
 
-	report.seq = trig->_trigger_seq++;
+	trigger.seq = trig->_trigger_seq;
 
 	if (trig->_trigger_pub == nullptr) {
-		trig->_trigger_pub = orb_advertise_queue(ORB_ID(camera_trigger), &report,
+		trig->_trigger_pub = orb_advertise_queue(ORB_ID(camera_trigger), &trigger,
 				     camera_trigger_s::ORB_QUEUE_LENGTH);
 
 	} else {
-		orb_publish(ORB_ID(camera_trigger), trig->_trigger_pub, &report);
+		orb_publish(ORB_ID(camera_trigger), trig->_trigger_pub, &trigger);
 
 	}
+
+	// The trigger drivers sends the camera feedback message (for geotagging)
+	// if the camera does not support real capture feedback.
+
+	if (trig->_camera_feedback_mode == CAMERA_FEEDBACK_MODE_NONE) {
+
+		struct camera_capture_s	capture = {};
+
+		// Set timestamp the instant after the trigger goes off
+		capture.timestamp = hrt_absolute_time();
+
+		timespec tv;
+		px4_clock_gettime(CLOCK_REALTIME, &tv);
+		capture.timestamp_utc = (uint64_t) tv.tv_sec * 1000000 + tv.tv_nsec / 1000;
+
+		// Fill image sequence
+		capture.seq = trig->_trigger_seq;
+
+		// Fill position data
+		struct vehicle_global_position_s gpos;
+		orb_copy(ORB_ID(vehicle_global_position), trig->_gpos_sub, &gpos);
+
+		capture.lat = gpos.lat;
+		capture.lon = gpos.lon;
+		capture.alt = gpos.alt;
+
+		struct vehicle_local_position_s lpos;
+		orb_copy(ORB_ID(vehicle_local_position), trig->_lpos_sub, &lpos);
+
+		capture.ground_distance = lpos.dist_bottom_valid ? lpos.dist_bottom : -1.0f;
+
+		// Fill attitude data
+		struct vehicle_attitude_s att;
+		orb_copy(ORB_ID(vehicle_attitude), trig->_att_sub, &att);
+
+		// TODO : this needs to be rotated by camera orientation or set to gimbal orientation when available
+		capture.q[0] = att.q[0];
+		capture.q[1] = att.q[1];
+		capture.q[2] = att.q[2];
+		capture.q[3] = att.q[3];
+
+		// Indicate that no capture feedback from camera is available
+		capture.result = -1;
+
+		int instance_id;
+		orb_publish_auto(ORB_ID(camera_capture), &trig->_capture_pub, &capture, &instance_id, ORB_PRIO_DEFAULT);
+
+	}
+
+	// increment frame count
+	trig->_trigger_seq++;
+
 }
 
 void
