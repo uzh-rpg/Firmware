@@ -55,7 +55,7 @@ extern "C" __EXPORT int lqr_control_main(int argc, char *argv[]);
 
 int lqr_control_main(int argc, char *argv[])
 {
-	PX4_INFO("Mamma Mia!");
+	PX4_INFO("LQR controller playground");
 
 	/* subscribe to sensor_combined topic */
 	int sensor_sub_fd = orb_subscribe(ORB_ID(sensor_combined));
